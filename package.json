@@ -1,0 +1,16 @@
+{
+  "name": "focus-board",
+  "version": "1.0.0",
+  "description": "Personal focus board with projects, tasks, and backlog",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

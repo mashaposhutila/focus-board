@@ -1,0 +1,182 @@
+const express = require('express');
+const fs      = require('fs');
+const path    = require('path');
+
+const app     = express();
+const PORT    = process.env.PORT || 3000;
+const DB_FILE = process.env.DB_PATH || path.join(__dirname, 'data.json');
+
+// ── JSON persistence ─────────────────────────────────────────────────────────
+
+function load() {
+  if (!fs.existsSync(DB_FILE)) return null;
+  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
+  catch { return null; }
+}
+
+function save(data) {
+  const tmp = DB_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, DB_FILE);
+}
+
+function ts() { return new Date().toISOString(); }
+
+// ── Seed initial data ─────────────────────────────────────────────────────────
+
+function initDb() {
+  let data = load();
+  if (data) return data;
+
+  const now = ts();
+  const mk = (id, name, status, context, next_step) =>
+    ({ id, name, status, context, next_step, order_idx: id,
+       created_at: now, updated_at: now, tasks: [] });
+
+  data = {
+    _nextProjectId: 10,
+    _nextTaskId:    1,
+    projects: [
+      mk(1, 'Финансы / бюджет',        'tracking',    '35 000€ всего, ~1680€/мес, горизонт ~20 мес (до фев 2028)', 'пересчитывать раз в месяц'),
+      mk(2, 'Налоговая декларация',    'in_progress', 'За 2025 не нужна. За 2024 нужно указать продажу квартиры и заплатить штраф. Созвон с бухгалтером в июле.', 'дождаться созвона'),
+      mk(3, 'Ментальное здоровье',     'in_progress', 'Психиатр поднял дозу до 20мг эсциталопрама. Связь через 3 недели.', 'следить за состоянием'),
+      mk(4, 'ВНЖ / резидентство',      'in_progress', 'Отправлены жалоба и запрос статуса карты.', 'зайти в Loja do Cidadão'),
+      mk(5, 'Работа / заработок',      'not_started', 'Удалённая работа vs своя компания. Цель: 2-3k€/мес.', 'провести отдельную сессию'),
+      mk(6, 'Свой продукт',            'not_started', 'Мастермайнды для творческих людей.', ''),
+      mk(7, 'Художественная практика', 'not_started', 'Школа заканчивается. Выставка в сентябре.', ''),
+      mk(8, 'Отношения (Клаудио)',     'pause',       'Договорённость о паузе - 2 недели.', ''),
+      mk(9, 'Языки (PT и другие)',     'not_started', '', ''),
+    ],
+    backlog: [],
+  };
+  save(data);
+  return data;
+}
+
+let DB = initDb();
+
+function findProject(id) { return DB.projects.find(p => p.id === id); }
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+app.get('/api/projects', (req, res) => {
+  res.json(DB.projects.slice().sort((a, b) => a.order_idx - b.order_idx));
+});
+
+app.put('/api/projects/:id', (req, res) => {
+  const p = findProject(parseInt(req.params.id));
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const { name, status, context, next_step } = req.body;
+  if (name      !== undefined) p.name      = name;
+  if (status    !== undefined) p.status    = status;
+  if (context   !== undefined) p.context   = context;
+  if (next_step !== undefined) p.next_step = next_step;
+  p.updated_at = ts();
+  save(DB);
+  res.json({ ok: true });
+});
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+app.get('/api/backlog', (req, res) => {
+  res.json([...DB.backlog].reverse());
+});
+
+app.post('/api/tasks', (req, res) => {
+  const { project_id, title } = req.body;
+  const now  = ts();
+  const task = { id: DB._nextTaskId++, title: title.trim(), done: false,
+                 project_id: project_id || null, created_at: now, updated_at: now };
+  if (project_id) {
+    const p = findProject(project_id);
+    if (p) { p.tasks.push(task); p.updated_at = now; }
+  } else {
+    DB.backlog.push(task);
+  }
+  save(DB);
+  res.json({ id: task.id, created_at: now, updated_at: now });
+});
+
+app.put('/api/tasks/:id', (req, res) => {
+  const tid = parseInt(req.params.id);
+  const now = ts();
+  const { title, done, project_id } = req.body;
+
+  let task = null;
+  let fromProject = null;
+
+  for (const p of DB.projects) {
+    const t = p.tasks.find(t => t.id === tid);
+    if (t) { task = t; fromProject = p; break; }
+  }
+  if (!task) {
+    task = DB.backlog.find(t => t.id === tid) || null;
+  }
+  if (!task) return res.status(404).json({ error: 'not found' });
+
+  if (title !== undefined) task.title = title;
+  if (done  !== undefined) task.done  = Boolean(done);
+  task.updated_at = now;
+
+  if (project_id !== undefined && project_id !== task.project_id) {
+    if (fromProject) {
+      fromProject.tasks = fromProject.tasks.filter(t => t.id !== tid);
+      fromProject.updated_at = now;
+    } else {
+      DB.backlog = DB.backlog.filter(t => t.id !== tid);
+    }
+    task.project_id = project_id;
+    if (project_id) {
+      const target = findProject(project_id);
+      if (target) { target.tasks.push(task); target.updated_at = now; }
+    } else {
+      DB.backlog.push(task);
+    }
+  } else if (fromProject) {
+    fromProject.updated_at = now;
+  }
+
+  save(DB);
+  res.json({ ok: true });
+});
+
+app.delete('/api/tasks/:id', (req, res) => {
+  const tid = parseInt(req.params.id);
+  for (const p of DB.projects) {
+    const before = p.tasks.length;
+    p.tasks = p.tasks.filter(t => t.id !== tid);
+    if (p.tasks.length < before) { save(DB); return res.json({ ok: true }); }
+  }
+  DB.backlog = DB.backlog.filter(t => t.id !== tid);
+  save(DB);
+  res.json({ ok: true });
+});
+
+// ── Recent changes ────────────────────────────────────────────────────────────
+app.get('/api/recent', (req, res) => {
+  const since = req.query.since
+    ? new Date(req.query.since)
+    : new Date(Date.now() - 7 * 86400000);
+
+  const projects = DB.projects
+    .filter(p => new Date(p.updated_at) > since)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  const allTasks = [
+    ...DB.projects.flatMap(p => p.tasks.map(t => ({ ...t, project_name: p.name }))),
+    ...DB.backlog.map(t => ({ ...t, project_name: null })),
+  ];
+
+  const tasks = allTasks
+    .filter(t => new Date(t.updated_at) > since)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+  res.json({ projects, tasks });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('\n  Focus Board -> http://localhost:' + PORT + '\n');
+});
