@@ -1,601 +1,227 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0f1117">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Focus Board</title>
-  <style>
-    /* ── Reset ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    button { font-family: inherit; cursor: pointer; }
-    input, textarea, select { font-family: inherit; }
-
-    /* ── Tokens ── */
-    :root {
-      --bg:       #0f1117;
-      --card:     #181a27;
-      --card2:    #1e2035;
-      --border:   #2a2d47;
-      --text:     #e2e4f0;
-      --muted:    #676b8a;
-      --accent:   #6366f1;
-      --accent2:  #4f52d9;
-      --radius:   12px;
-    }
-
-    /* ── Base ── */
-    html, body { height: 100%; background: var(--bg); color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
-
-    /* ── App shell ── */
-    #app { display: flex; flex-direction: column; height: 100dvh; }
-
-    /* ── Header ── */
-    .hdr { display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 18px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .hdr-title { font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
-    .hdr-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-
-    /* ── Tabs ── */
-    .tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
-      background: var(--bg); position: sticky; top: 0; z-index: 20; }
-    .tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
-      padding: 11px 6px; font-size: 13px; font-weight: 500; color: var(--muted);
-      background: none; border: none; border-bottom: 2px solid transparent;
-      transition: color .15s, border-color .15s; }
-    .tab.on { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab:hover:not(.on) { color: var(--text); }
-    .pill { background: var(--border); color: var(--muted); border-radius: 10px;
-      padding: 1px 7px; font-size: 11px; font-weight: 600; }
-
-    /* ── Scrollable content ── */
-    .content { flex: 1; overflow-y: auto; padding: 18px 16px 32px;
-      scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
-    .content::-webkit-scrollbar { width: 4px; }
-    .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-    /* ── Views ── */
-    .view { display: none; }
-    .view.on { display: block; }
-
-    /* ── Card ── */
-    .card { background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 15px; margin-bottom: 10px; }
-    .card-hdr { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
-    .card-name { font-size: 15px; font-weight: 600; flex: 1; line-height: 1.3; }
-
-    /* ── Status badge ── */
-    .badge { display: inline-flex; align-items: center; padding: 3px 10px;
-      border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap;
-      flex-shrink: 0; border: none; transition: opacity .15s; cursor: pointer; }
-    .badge:hover { opacity: .8; }
-    .badge.in_progress { background: rgba(59,130,246,.15); color: #60a5fa; }
-    .badge.tracking    { background: rgba(139,92,246,.15);  color: #a78bfa; }
-    .badge.pause       { background: rgba(245,158,11,.15);  color: #fbbf24; }
-    .badge.not_started { background: rgba(100,100,130,.18); color: #9ca3af; }
-    .badge.done        { background: rgba(16,185,129,.15);  color: #34d399; }
-
-    /* ── Editable fields ── */
-    .ctx { font-size: 13px; color: var(--muted); padding: 3px 5px; margin: 0 -5px 2px;
-      border-radius: 6px; cursor: pointer; }
-    .ctx:hover { background: rgba(255,255,255,.04); }
-    .nxt { font-size: 12px; color: var(--accent); padding: 3px 5px; margin: 0 -5px 10px;
-      border-radius: 6px; cursor: pointer; }
-    .nxt::before { content: '→ '; opacity: .55; }
-    .nxt:hover { background: rgba(99,102,241,.1); }
-    .nxt.empty { color: var(--muted); }
-    .nxt.empty::before { content: ''; }
-    .inline-ta { width: 100%; background: rgba(255,255,255,.05); border: 1px solid var(--border);
-      border-radius: 7px; color: var(--text); font-size: 13px; padding: 7px 9px;
-      resize: vertical; min-height: 52px; outline: none; }
-    .inline-ta:focus { border-color: var(--accent); }
-    .edit-btns { display: flex; gap: 6px; margin-top: 5px; }
-    .btn-save { background: var(--accent); color: #fff; border: none; border-radius: 7px;
-      padding: 5px 12px; font-size: 12px; }
-    .btn-save:hover { background: var(--accent2); }
-    .btn-cancel { background: var(--border); color: var(--muted); border: none;
-      border-radius: 7px; padding: 5px 12px; font-size: 12px; }
-
-    /* ── Tasks ── */
-    .tasks-toggle { display: flex; align-items: center; gap: 5px; background: none; border: none;
-      color: var(--muted); font-size: 12px; padding: 3px 0; }
-    .tasks-toggle:hover { color: var(--text); }
-    .arr { display: inline-block; transition: transform .2s; font-size: 10px; }
-    .tasks-toggle.open .arr { transform: rotate(90deg); }
-    .tasks-body { display: none; margin-top: 8px; }
-    .tasks-body.open { display: block; }
-    .task-row { display: flex; align-items: center; gap: 8px; padding: 5px 3px;
-      border-radius: 7px; }
-    .task-row:hover { background: rgba(255,255,255,.03); }
-    .task-row input[type=checkbox] { flex-shrink: 0; width: 15px; height: 15px;
-      accent-color: var(--accent); cursor: pointer; }
-    .task-lbl { flex: 1; font-size: 13px; cursor: default; line-height: 1.4; }
-    .task-lbl.done { text-decoration: line-through; color: var(--muted); }
-    .task-del { background: none; border: none; color: transparent; font-size: 17px;
-      line-height: 1; padding: 0 3px; transition: color .1s; flex-shrink: 0; }
-    .task-row:hover .task-del { color: var(--muted); }
-    .task-del:hover { color: #ef4444 !important; }
-    .task-add { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
-    .task-add-inp { flex: 1; background: rgba(255,255,255,.04); border: 1px solid var(--border);
-      border-radius: 7px; color: var(--text); font-size: 13px; padding: 6px 10px; outline: none; }
-    .task-add-inp::placeholder { color: var(--muted); }
-    .task-add-inp:focus { border-color: var(--accent); }
-
-    /* ── Backlog quick-add ── */
-    .qadd { display: flex; gap: 10px; margin-bottom: 18px; }
-    .qadd-inp { flex: 1; background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); color: var(--text); font-size: 16px;
-      padding: 13px 16px; outline: none; }
-    .qadd-inp::placeholder { color: var(--muted); }
-    .qadd-inp:focus { border-color: var(--accent); }
-    .qadd-btn { background: var(--accent); color: #fff; border: none;
-      border-radius: var(--radius); width: 50px; font-size: 22px; flex-shrink: 0; }
-    .qadd-btn:hover { background: var(--accent2); }
-
-    /* ── Backlog items ── */
-    .bl-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px;
-      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-      margin-bottom: 8px; }
-    .bl-text { flex: 1; font-size: 14px; line-height: 1.4; }
-    .bl-sel { font-size: 12px; background: var(--bg); border: 1px solid var(--border);
-      border-radius: 7px; color: var(--muted); padding: 5px 7px; max-width: 150px;
-      cursor: pointer; outline: none; flex-shrink: 0; }
-    .bl-sel:focus { border-color: var(--accent); color: var(--text); }
-    .bl-del { background: none; border: none; color: var(--muted); font-size: 18px;
-      line-height: 1; padding: 0 2px; flex-shrink: 0; }
-    .bl-del:hover { color: #ef4444; }
-
-    /* ── Recent / Home ── */
-    .visit-box { font-size: 13px; color: var(--muted); padding: 11px 14px;
-      background: rgba(99,102,241,.07); border: 1px solid rgba(99,102,241,.2);
-      border-radius: 10px; margin-bottom: 18px; }
-    .sec-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .5px; color: var(--muted); margin-bottom: 8px; }
-    .recent-group { margin-bottom: 20px; }
-    .ri { display: flex; align-items: center; gap: 10px; padding: 10px 13px;
-      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-      margin-bottom: 6px; }
-    .ri-main { flex: 1; min-width: 0; }
-    .ri-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ri-title.done { text-decoration: line-through; color: var(--muted); }
-    .ri-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
-    .ri-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
-    .empty-msg { text-align: center; color: var(--muted); padding: 40px 20px; font-size: 14px; }
-    .empty-hint { font-size: 13px; color: var(--muted); padding: 8px 0; }
-
-    /* ── Toast ── */
-    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(16px);
-      background: #232540; border: 1px solid var(--border); color: var(--text);
-      padding: 9px 18px; border-radius: 30px; font-size: 13px; opacity: 0; z-index: 999;
-      transition: opacity .2s, transform .2s; white-space: nowrap; pointer-events: none; }
-    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    @media (min-width: 640px) {
-      .content { padding: 22px 24px 40px; }
-      #app { max-width: 860px; margin: 0 auto; }
-    }
-  </style>
-</head>
-<body>
-<div id="app">
-
-  <div class="hdr">
-    <div>
-      <div class="hdr-title">Focus Board</div>
-      <div class="hdr-sub" id="hdr-sub">загрузка...</div>
-    </div>
-  </div>
-
-  <nav class="tabs">
-    <button class="tab on" data-tab="home">🏠 Главная</button>
-    <button class="tab" data-tab="projects">📁 Проекты <span class="pill" id="pill-p">9</span></button>
-    <button class="tab" data-tab="backlog">📋 Backlog <span class="pill" id="pill-b">0</span></button>
-  </nav>
-
-  <div class="content">
-    <!-- HOME -->
-    <div class="view on" id="view-home">
-      <div class="visit-box" id="visit-box"></div>
-      <div id="recent-content"></div>
-    </div>
-
-    <!-- PROJECTS -->
-    <div class="view" id="view-projects">
-      <div id="projects-list"></div>
-    </div>
-
-    <!-- BACKLOG -->
-    <div class="view" id="view-backlog">
-      <div class="qadd">
-        <input class="qadd-inp" id="bl-inp" type="text"
-               placeholder="Быстрая задача... (Enter)" autocomplete="off" inputmode="text">
-        <button class="qadd-btn" id="bl-btn">+</button>
-      </div>
-      <div class="sec-lbl">Задачи без проекта</div>
-      <div id="backlog-list"></div>
-    </div>
-  </div>
-</div>
-
-<div id="toast"></div>
-
-<script>
-// ── State ────────────────────────────────────────────────────────────────────
-let projects = [];
-let backlog  = [];
-const openSet = new Set(); // project ids with expanded task lists
-
-const VISIT_KEY = 'fb_last_visit';
-const lastVisit = localStorage.getItem(VISIT_KEY);
-
-// Record this visit after a short delay (so the /recent fetch uses the OLD timestamp)
-setTimeout(() => localStorage.setItem(VISIT_KEY, new Date().toISOString()), 1500);
-
-// ── Status config ─────────────────────────────────────────────────────────────
-const STATUSES = [
-  { key: 'in_progress',  label: 'В работе'      },
-  { key: 'tracking',     label: 'Отслеживается' },
-  { key: 'pause',        label: 'Пауза'          },
-  { key: 'not_started',  label: 'Не начато'      },
-  { key: 'done',         label: 'Готово'         },
-];
-const statusLabel = k => STATUSES.find(s => s.key === k)?.label || k;
-
-// ── Navigation ────────────────────────────────────────────────────────────────
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
-    tab.classList.add('on');
-    document.getElementById('view-' + tab.dataset.tab).classList.add('on');
-  });
+const express = require('express');
+const fs      = require('fs');
+const path    = require('path');
+ 
+const app     = express();
+const PORT    = process.env.PORT || 3000;
+const DB_FILE = process.env.DB_PATH || path.join(__dirname, 'data.json');
+ 
+// ── JSON persistence ─────────────────────────────────────────────────────────
+ 
+function load() {
+  if (!fs.existsSync(DB_FILE)) return null;
+  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
+  catch { return null; }
+}
+ 
+function save(data) {
+  const tmp = DB_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, DB_FILE);
+}
+ 
+function ts() { return new Date().toISOString(); }
+ 
+// ── Seed initial data ─────────────────────────────────────────────────────────
+ 
+function initDb() {
+  let data = load();
+  if (data) return data;
+ 
+  const now = ts();
+  const mk = (id, name, status, context, next_step) =>
+    ({ id, name, status, context, next_step, order_idx: id,
+       created_at: now, updated_at: now, tasks: [] });
+ 
+  data = {
+    _nextProjectId: 10,
+    _nextTaskId:    1,
+    projects: [
+      mk(1, 'Финансы / бюджет',        'tracking',    '35 000€ всего, ~1680€/мес, горизонт ~20 мес (до фев 2028)', 'пересчитывать раз в месяц'),
+      mk(2, 'Налоговая декларация',    'in_progress', 'За 2025 не нужна. За 2024 нужно указать продажу квартиры и заплатить штраф. Созвон с бухгалтером в июле.', 'дождаться созвона'),
+      mk(3, 'Ментальное здоровье',     'in_progress', 'Психиатр поднял дозу до 20мг эсциталопрама. Связь через 3 недели.', 'следить за состоянием'),
+      mk(4, 'ВНЖ / резидентство',      'in_progress', 'Отправлены жалоба и запрос статуса карты.', 'зайти в Loja do Cidadão'),
+      mk(5, 'Работа / заработок',      'not_started', 'Удалённая работа vs своя компания. Цель: 2-3k€/мес.', 'провести отдельную сессию'),
+      mk(6, 'Свой продукт',            'not_started', 'Мастермайнды для творческих людей.', ''),
+      mk(7, 'Художественная практика', 'not_started', 'Школа заканчивается. Выставка в сентябре.', ''),
+      mk(8, 'Отношения (Клаудио)',     'pause',       'Договорённость о паузе - 2 недели.', ''),
+      mk(9, 'Языки (PT и другие)',     'not_started', '', ''),
+    ],
+    backlog: [],
+  };
+  save(data);
+  return data;
+}
+ 
+let DB = initDb();
+ 
+function findProject(id) { return DB.projects.find(p => p.id === id); }
+ 
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+ 
+// ── Projects ──────────────────────────────────────────────────────────────────
+app.get('/api/projects', (req, res) => {
+  res.json(DB.projects.slice().sort((a, b) => a.order_idx - b.order_idx));
 });
-
-// ── API ───────────────────────────────────────────────────────────────────────
-async function api(method, url, body) {
-  const r = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body:    body ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2000);
-}
-
-// ── Time ──────────────────────────────────────────────────────────────────────
-function ago(iso) {
-  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
-  if (m < 2)   return 'только что';
-  if (m < 60)  return m + ' мин назад';
-  const h = Math.floor(m / 60);
-  if (h < 24)  return h + ' ч назад';
-  const d = Math.floor(h / 24);
-  if (d < 8)   return d + ' дн назад';
-  return new Date(iso).toLocaleDateString('ru');
-}
-function fmtDate(iso) {
-  return new Date(iso).toLocaleString('ru', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
-}
-
-// ── Escape HTML ───────────────────────────────────────────────────────────────
-function esc(s) {
-  return String(s || '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ── Restore open task panels ──────────────────────────────────────────────────
-function restoreOpen() {
-  openSet.forEach(id => {
-    const card = document.querySelector(`.pcard[data-id="${id}"]`);
-    if (!card) return;
-    card.querySelector('.tasks-toggle')?.classList.add('open');
-    const body = card.querySelector('.tasks-body');
-    if (body) body.classList.add('open');
-  });
-}
-
-// ── RENDER: Projects ──────────────────────────────────────────────────────────
-function renderProjects() {
-  const el = document.getElementById('projects-list');
-  if (!projects.length) { el.innerHTML = '<div class="empty-hint">Загрузка...</div>'; return; }
-
-  el.innerHTML = projects.map(p => {
-    const done  = p.tasks.filter(t => t.done).length;
-    const total = p.tasks.length;
-    const taskRows = p.tasks.map(t => `
-      <div class="task-row">
-        <input type="checkbox" class="tcb" data-tid="${t.id}" data-pid="${p.id}" ${t.done ? 'checked' : ''}>
-        <span class="task-lbl ${t.done ? 'done' : ''}">${esc(t.title)}</span>
-        <button class="task-del" data-tid="${t.id}" title="удалить">×</button>
-      </div>`).join('');
-
-    const ctxText = p.context   || '—';
-    const nxtText = p.next_step || 'следующий шаг не задан';
-    const nxtCls  = p.next_step ? 'nxt' : 'nxt empty';
-
-    return `
-    <div class="card pcard" data-id="${p.id}">
-      <div class="card-hdr">
-        <div class="card-name">${esc(p.name)}</div>
-        <button class="badge ${p.status}" data-pid="${p.id}">${statusLabel(p.status)}</button>
-      </div>
-      <div class="ctx" data-pid="${p.id}" data-field="context">${esc(ctxText)}</div>
-      <div class="${nxtCls}" data-pid="${p.id}" data-field="next_step">${esc(nxtText)}</div>
-      <button class="tasks-toggle" data-pid="${p.id}">
-        <span class="arr">▶</span> Задачи (${done}/${total})
-      </button>
-      <div class="tasks-body" data-pid="${p.id}">
-        ${taskRows}
-        <div class="task-add">
-          <input class="task-add-inp" data-pid="${p.id}" type="text"
-                 placeholder="+ добавить задачу (Enter)" autocomplete="off">
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Events
-  el.querySelectorAll('.badge[data-pid]').forEach(btn => {
-    btn.addEventListener('click', () => cycleStatus(parseInt(btn.dataset.pid)));
-  });
-
-  el.querySelectorAll('.ctx, .nxt').forEach(div => {
-    div.addEventListener('click', () => startInlineEdit(div, parseInt(div.dataset.pid), div.dataset.field));
-  });
-
-  el.querySelectorAll('.tasks-toggle').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const pid  = parseInt(btn.dataset.pid);
-      const body = el.querySelector(`.tasks-body[data-pid="${pid}"]`);
-      const open = btn.classList.toggle('open');
-      body.classList.toggle('open', open);
-      if (open) openSet.add(pid); else openSet.delete(pid);
-    });
-  });
-
-  el.querySelectorAll('.tcb').forEach(cb => {
-    cb.addEventListener('change', () => toggleTask(parseInt(cb.dataset.tid), cb.checked, parseInt(cb.dataset.pid)));
-  });
-
-  el.querySelectorAll('.task-del').forEach(btn => {
-    btn.addEventListener('click', () => deleteTask(parseInt(btn.dataset.tid)));
-  });
-
-  el.querySelectorAll('.task-add-inp').forEach(inp => {
-    inp.addEventListener('keydown', async e => {
-      if (e.key === 'Enter' && inp.value.trim()) {
-        await addTask(parseInt(inp.dataset.pid), inp.value.trim());
-        inp.value = '';
-      }
-    });
-  });
-
-  restoreOpen();
-}
-
-// ── RENDER: Backlog ───────────────────────────────────────────────────────────
-function renderBacklog() {
-  const el = document.getElementById('backlog-list');
-  document.getElementById('pill-b').textContent = backlog.length;
-
-  if (!backlog.length) {
-    el.innerHTML = '<div class="empty-hint">Backlog пуст — добавь задачу выше</div>';
-    return;
-  }
-
-  const opts = projects.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-
-  el.innerHTML = backlog.map(t => `
-    <div class="bl-item" data-tid="${t.id}">
-      <span class="bl-text">${esc(t.title)}</span>
-      <select class="bl-sel" data-tid="${t.id}">
-        <option value="">→ в проект</option>
-        ${opts}
-      </select>
-      <button class="bl-del" data-tid="${t.id}" title="удалить">×</button>
-    </div>`).join('');
-
-  el.querySelectorAll('.bl-sel').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      const pid = parseInt(sel.value);
-      if (!pid) return;
-      await api('PUT', `/api/tasks/${sel.dataset.tid}`, { project_id: pid });
-      await loadProjects();
-      await loadBacklog();
-      renderProjects();
-      renderBacklog();
-      toast('Задача добавлена в проект');
-    });
-  });
-
-  el.querySelectorAll('.bl-del').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await api('DELETE', `/api/tasks/${btn.dataset.tid}`);
-      await loadBacklog();
-      renderBacklog();
-    });
-  });
-}
-
-// ── RENDER: Home ──────────────────────────────────────────────────────────────
-async function renderHome() {
-  const box     = document.getElementById('visit-box');
-  const content = document.getElementById('recent-content');
-  const sub     = document.getElementById('hdr-sub');
-
-  let qs = '';
-  if (lastVisit) {
-    box.textContent = `Последний визит: ${ago(lastVisit)} — ${fmtDate(lastVisit)}`;
-    sub.textContent = `обновлено ${ago(lastVisit)}`;
-    qs = '?since=' + encodeURIComponent(lastVisit);
+ 
+app.post('/api/projects', (req, res) => {
+  const { name, status } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: 'name required' });
+  const now = ts();
+  const id  = DB._nextProjectId++;
+  const project = {
+    id, name: name.trim(), status: status || 'not_started',
+    context: '', next_step: '', order_idx: id,
+    created_at: now, updated_at: now, tasks: [],
+  };
+  DB.projects.push(project);
+  save(DB);
+  res.json({ id, created_at: now });
+});
+ 
+app.put('/api/projects/:id', (req, res) => {
+  const p = findProject(parseInt(req.params.id));
+  if (!p) return res.status(404).json({ error: 'not found' });
+  const { name, status, context, next_step } = req.body;
+  if (name      !== undefined) p.name      = name;
+  if (status    !== undefined) p.status    = status;
+  if (context   !== undefined) p.context   = context;
+  if (next_step !== undefined) p.next_step = next_step;
+  p.updated_at = ts();
+  save(DB);
+  res.json({ ok: true });
+});
+ 
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+app.get('/api/backlog', (req, res) => {
+  res.json([...DB.backlog].reverse());
+});
+ 
+app.post('/api/tasks', (req, res) => {
+  const { project_id, title, due_date } = req.body;
+  const now  = ts();
+  const task = { id: DB._nextTaskId++, title: title.trim(), done: false,
+                 project_id: project_id || null, due_date: due_date || null,
+                 created_at: now, updated_at: now };
+  if (project_id) {
+    const p = findProject(project_id);
+    if (p) { p.tasks.push(task); p.updated_at = now; }
   } else {
-    box.textContent = 'Первый визит — показываем изменения за последние 7 дней';
-    sub.textContent = 'добро пожаловать';
+    DB.backlog.push(task);
   }
-
-  const { projects: rp, tasks: rt } = await api('GET', '/api/recent' + qs);
-
-  if (!rp.length && !rt.length) {
-    content.innerHTML = '<div class="empty-msg">✓ Изменений с последнего визита нет</div>';
-    return;
-  }
-
-  let html = '';
-
-  if (rp.length) {
-    html += '<div class="recent-group"><div class="sec-lbl">Проекты</div>';
-    rp.forEach(p => {
-      html += `<div class="ri">
-        <div class="ri-main"><div class="ri-title">${esc(p.name)}</div></div>
-        <span class="badge ${p.status}" style="cursor:default">${statusLabel(p.status)}</span>
-        <span class="ri-time">${ago(p.updated_at)}</span>
-      </div>`;
-    });
-    html += '</div>';
-  }
-
-  if (rt.length) {
-    html += '<div class="recent-group"><div class="sec-lbl">Задачи</div>';
-    rt.forEach(t => {
-      const where = t.project_name ? '→ ' + t.project_name : '→ Backlog';
-      html += `<div class="ri">
-        <div class="ri-main">
-          <div class="ri-title ${t.done ? 'done' : ''}">${esc(t.title)}</div>
-          <div class="ri-sub">${esc(where)}</div>
-        </div>
-        <span class="ri-time">${ago(t.updated_at)}</span>
-      </div>`;
-    });
-    html += '</div>';
-  }
-
-  content.innerHTML = html;
-}
-
-// ── Actions ───────────────────────────────────────────────────────────────────
-async function cycleStatus(pid) {
-  const p    = projects.find(x => x.id === pid);
-  const keys = STATUSES.map(s => s.key);
-  const next = keys[(keys.indexOf(p.status) + 1) % keys.length];
-  await api('PUT', `/api/projects/${pid}`, { status: next });
-  p.status = next;
-  p.updated_at = new Date().toISOString();
-  renderProjects();
-  toast('Статус: ' + statusLabel(next));
-}
-
-function startInlineEdit(el, pid, field) {
-  const p    = projects.find(x => x.id === pid);
-  const val  = p[field] || '';
-
-  const ta   = document.createElement('textarea');
-  ta.className = 'inline-ta';
-  ta.value = val;
-
-  const btns = document.createElement('div');
-  btns.className = 'edit-btns';
-  btns.innerHTML = '<button class="btn-save">Сохранить</button><button class="btn-cancel">Отмена</button>';
-
-  el.replaceWith(ta);
-  ta.after(btns);
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-
-  btns.querySelector('.btn-save').addEventListener('click', async () => {
-    const v = ta.value.trim();
-    await api('PUT', `/api/projects/${pid}`, { [field]: v });
-    p[field] = v;
-    p.updated_at = new Date().toISOString();
-    renderProjects();
-    toast('Сохранено');
-  });
-
-  btns.querySelector('.btn-cancel').addEventListener('click', () => renderProjects());
-}
-
-async function addTask(pid, title) {
-  const res = await api('POST', '/api/tasks', { project_id: pid, title });
-  const p   = projects.find(x => x.id === pid);
-  if (p) p.tasks.push({ id: res.id, project_id: pid, title, done: 0,
-                         created_at: res.created_at, updated_at: res.updated_at });
-  openSet.add(pid);
-  renderProjects();
-}
-
-async function toggleTask(tid, done, pid) {
-  await api('PUT', `/api/tasks/${tid}`, { done });
-  const p = projects.find(x => x.id === pid);
-  if (p) { const t = p.tasks.find(t => t.id === tid); if (t) t.done = done ? 1 : 0; }
-  // Partial update: just flip the label style without full re-render
-  const lbl = document.querySelector(`.tcb[data-tid="${tid}"]`)?.nextElementSibling;
-  if (lbl) lbl.classList.toggle('done', done);
-  // Update count in toggle button
-  if (p) {
-    const toggle = document.querySelector(`.tasks-toggle[data-pid="${pid}"]`);
-    if (toggle) {
-      const d = p.tasks.filter(t => t.done).length;
-      const open = toggle.classList.contains('open');
-      toggle.innerHTML = `<span class="arr">▶</span> Задачи (${d}/${p.tasks.length})`;
-      if (open) toggle.classList.add('open');
-    }
-  }
-}
-
-async function deleteTask(tid) {
-  await api('DELETE', `/api/tasks/${tid}`);
-  for (const p of projects) {
-    const i = p.tasks.findIndex(t => t.id === tid);
-    if (i !== -1) { p.tasks.splice(i, 1); break; }
-  }
-  renderProjects();
-}
-
-// ── Backlog add ───────────────────────────────────────────────────────────────
-async function addToBacklog() {
-  const inp   = document.getElementById('bl-inp');
-  const title = inp.value.trim();
-  if (!title) return;
-  await api('POST', '/api/tasks', { title });
-  inp.value = '';
-  await loadBacklog();
-  renderBacklog();
-  toast('Добавлено в backlog');
-}
-
-document.getElementById('bl-inp').addEventListener('keydown', e => { if (e.key === 'Enter') addToBacklog(); });
-document.getElementById('bl-btn').addEventListener('click', addToBacklog);
-
-// ── Load ──────────────────────────────────────────────────────────────────────
-async function loadProjects() {
-  projects = await api('GET', '/api/projects');
-  document.getElementById('pill-p').textContent = projects.length;
-}
-async function loadBacklog() {
-  backlog = await api('GET', '/api/backlog');
-}
-
-async function init() {
-  await Promise.all([loadProjects(), loadBacklog()]);
-  renderProjects();
-  renderBacklog();
-  await renderHome();
-}
-
-init().catch(err => {
-  document.getElementById('hdr-sub').textContent = 'ошибка загрузки';
-  console.error(err);
+  save(DB);
+  res.json({ id: task.id, created_at: now, updated_at: now });
 });
-</script>
-</body>
-</html>
+ 
+app.put('/api/tasks/:id', (req, res) => {
+  const tid = parseInt(req.params.id);
+  const now = ts();
+  const { title, done, project_id, due_date } = req.body;
+ 
+  let task = null;
+  let fromProject = null;
+ 
+  for (const p of DB.projects) {
+    const t = p.tasks.find(t => t.id === tid);
+    if (t) { task = t; fromProject = p; break; }
+  }
+  if (!task) {
+    task = DB.backlog.find(t => t.id === tid) || null;
+  }
+  if (!task) return res.status(404).json({ error: 'not found' });
+ 
+  if (title    !== undefined) task.title    = title;
+  if (done     !== undefined) task.done     = Boolean(done);
+  if (due_date !== undefined) task.due_date = due_date || null;
+  task.updated_at = now;
+ 
+  if (project_id !== undefined && project_id !== task.project_id) {
+    if (fromProject) {
+      fromProject.tasks = fromProject.tasks.filter(t => t.id !== tid);
+      fromProject.updated_at = now;
+    } else {
+      DB.backlog = DB.backlog.filter(t => t.id !== tid);
+    }
+    task.project_id = project_id;
+    if (project_id) {
+      const target = findProject(project_id);
+      if (target) { target.tasks.push(task); target.updated_at = now; }
+    } else {
+      DB.backlog.push(task);
+    }
+  } else if (fromProject) {
+    fromProject.updated_at = now;
+  }
+ 
+  save(DB);
+  res.json({ ok: true });
+});
+ 
+app.delete('/api/tasks/:id', (req, res) => {
+  const tid = parseInt(req.params.id);
+  for (const p of DB.projects) {
+    const before = p.tasks.length;
+    p.tasks = p.tasks.filter(t => t.id !== tid);
+    if (p.tasks.length < before) { save(DB); return res.json({ ok: true }); }
+  }
+  DB.backlog = DB.backlog.filter(t => t.id !== tid);
+  save(DB);
+  res.json({ ok: true });
+});
+ 
+// ── Plan (today / tomorrow / this week) ──────────────────────────────────────
+app.get('/api/plan', (req, res) => {
+  const now      = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+ 
+  const tom = new Date(now); tom.setDate(now.getDate() + 1);
+  const tomStr = tom.toISOString().split('T')[0];
+ 
+  const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + 7);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
+ 
+  const allTasks = [
+    ...DB.projects.flatMap(p => p.tasks.map(t => ({ ...t, project_name: p.name }))),
+    ...DB.backlog.map(t => ({ ...t, project_name: null })),
+  ].filter(t => t.due_date);
+ 
+  const overdue  = [], today = [], tomorrow = [], week = [];
+  for (const t of allTasks) {
+    const d = t.due_date;
+    if (d < todayStr)    overdue.push(t);
+    else if (d === todayStr) today.push(t);
+    else if (d === tomStr)   tomorrow.push(t);
+    else if (d <= weekEndStr) week.push(t);
+  }
+  res.json({ overdue, today, tomorrow, week });
+});
+ 
+// ── Recent changes ────────────────────────────────────────────────────────────
+app.get('/api/recent', (req, res) => {
+  const since = req.query.since
+    ? new Date(req.query.since)
+    : new Date(Date.now() - 7 * 86400000);
+ 
+  const projects = DB.projects
+    .filter(p => new Date(p.updated_at) > since)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+ 
+  const allTasks = [
+    ...DB.projects.flatMap(p => p.tasks.map(t => ({ ...t, project_name: p.name }))),
+    ...DB.backlog.map(t => ({ ...t, project_name: null })),
+  ];
+ 
+  const tasks = allTasks
+    .filter(t => new Date(t.updated_at) > since)
+    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+ 
+  res.json({ projects, tasks });
+});
+ 
+// ── Start ─────────────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('\n  Focus Board -> http://localhost:' + PORT + '\n');
+});
+ 
